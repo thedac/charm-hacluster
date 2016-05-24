@@ -55,6 +55,8 @@ from utils import (
     disable_lsb_services,
     disable_upstart_services,
     get_ipv6_addr,
+    validate_maas,
+    setup_maas_api,
     set_unit_status,
 )
 
@@ -94,6 +96,16 @@ def install():
     mkdir('/usr/lib/ocf/resource.d/ceph')
     if not os.path.isfile('/usr/lib/ocf/resource.d/ceph/rbd'):
         shutil.copy('ocf/ceph/rbd', '/usr/lib/ocf/resource.d/ceph/rbd')
+    # OCF for MAAS DNS
+    mkdir('/usr/lib/ocf/resource.d/maas')
+    if not os.path.isfile('/usr/lib/ocf/resource.d/maas/dns'):
+        shutil.copy('ocf/maas/dns', '/usr/lib/ocf/resource.d/maas/dns')
+    if not os.path.isfile('/usr/lib/heartbeat/maas_dns.py'):
+        shutil.copy('ocf/maas/maas_dns.py', '/usr/lib/heartbeat/maas_dns.py')
+    if not os.path.isdir('/usr/lib/heartbeat/maasclient'):
+        shutil.copytree('ocf/maas/maasclient', '/usr/lib/heartbeat/maasclient')
+    # Xenial corosync is not creating this directory
+    mkdir('/etc/corosync/uidgid.d')
 
 
 def get_transport():
@@ -220,6 +232,20 @@ def ha_relation_changed():
     if True in [ra.startswith('ocf:ceph')
                 for ra in resources.itervalues()]:
         apt_install('ceph-resource-agents')
+
+    if True in [ra.startswith('ocf:maas')
+                for ra in resources.itervalues()]:
+        if validate_maas():
+            log('Setting up access to MAAS API', level=INFO)
+            setup_maas_api()
+            # Update resource_parms to include MAAS URL and credentials
+            resource_params.update({'maas_url': config('maas_url'),
+                                    'maas_credentials':
+                                        config('maas-credentials'),
+                                    })
+        else:
+            raise Exception("DNS HA is requested but maas_url "
+                            "or maas_credentials are not set")
 
     # NOTE: this should be removed in 15.04 cycle as corosync
     # configuration should be set directly on subordinate

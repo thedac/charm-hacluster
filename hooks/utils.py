@@ -41,6 +41,8 @@ from charmhelpers.core.host import (
 )
 from charmhelpers.fetch import (
     apt_install,
+    add_source,
+    apt_update,
 )
 from charmhelpers.contrib.hahelpers.cluster import (
     peer_ips,
@@ -515,6 +517,20 @@ def restart_corosync():
     if not is_unit_paused_set():
         service_restart("corosync")
         service_start("pacemaker")
+
+
+def validate_maas():
+    if config('maas_url') and config('maas_credentials'):
+        return True
+    else:
+        status_set('blocked', "DNS HA is requested but maas_url "
+                              "or maas_credentials are not set")
+        return False
+
+def setup_maas_api():
+    add_source(config('maas_source'))
+    apt_update(fatal=True)
+    apt_install('python3-maas-client', fatal=True)
 
 
 def is_in_standby_mode(node_name):
